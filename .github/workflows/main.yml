@@ -89,11 +89,9 @@ jobs:
           echo "Senha: GitHubRDP123"
           echo "=========================================================="
           
-          # Loop de checagem para manter o workflow online por até 5 horas e meia
-          $endTime = (Get-Date).AddMinutes(330)
-          $endTimeUnix = [DateTimeOffset]::UtcNow.AddMinutes(330).ToUnixTimeSeconds()
-          
-          while ($(date +%s) -lt $endTimeUnix) {
-              echo "Runner ativo e aguardando conexões via Tailscale..."
+          # Loop em puro Bash para manter o workflow online por 5 horas e meia (330 minutos)
+          # Evita que a máquina desligue sozinha enquanto você usa o RDP
+          for i in {1..330}; do
+              echo "Runner ativo e aguardando conexões via Tailscale... (Minuto $i de 330)"
               sleep 60
-          }
+          done
