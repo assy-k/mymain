@@ -40,17 +40,21 @@ jobs:
 
       - name: Instalar e Iniciar Emulador Android (Com Tela)
         run: |
-          # 1. Configurar as variáveis de ambiente para mapear o Android SDK nativo do GitHub Actions
+          # 1. Configurar caminhos e variáveis globais
           export ANDROID_HOME=$ANDROID_SDK_ROOT
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator
           
-          # 2. Instalar dependências necessárias para aceleração gráfica virtualizada
+          # Forçar o diretório de AVDs para a home do usuário atual
+          export ANDROID_AVD_HOME=$HOME/.android/avd
+          mkdir -p $ANDROID_AVD_HOME
+
+          # 2. Instalar dependências necessárias do sistema
           sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils xvfb android-sdk-platform-tools-common
           
           echo "Iniciando o display virtual Xvfb..."
           export DISPLAY=:1
           Xvfb :1 -screen 0 1280x1024x24 &
-          sleep 3 # Aguarda o display virtual estabilizar
+          sleep 5
           
           echo "Aceitando licenças do Android SDK..."
           yes | sdkmanager --licenses || true
@@ -58,15 +62,22 @@ jobs:
           echo "Baixando imagem do Android 10..."
           sdkmanager --install "system-images;android-29;default;x86_64"
           
-          echo "Criando o dispositivo virtual (AVD)..."
-          echo "no" | avdmanager create avd -n test_android -k "system-images;android-29;default;x86_64" --force
+          echo "Criando o dispositivo virtual (AVD) de forma totalmente automatizada..."
+          # O truque abaixo envia um 'Enter' vazio para TODAS as perguntas do avdmanager, pulando o prompt de profile customizado
+          echo "" | avdmanager create avd -n test_android -k "system-images;android-29;default;x86_64" --force
           
-          echo "Iniciando o Android Emulator em background dentro do display virtual..."
-          emulator -avd test_android -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot-save &
+          echo "Verificando se o AVD foi criado com sucesso:"
+          emulator -list-avds
+          
+          echo "Iniciando o Android Emulator em background..."
+          # Adicionado -no-audio e desativado aceleração de hardware que possa conflitar no ambiente virtual padrão
+          emulator -avd test_android -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot-save -no-window -qemu -enable-kvm &
           
           echo "Aguardando o emulador iniciar o sistema básico..."
+          # Dá um tempo para o adb reconhecer a inicialização em background
+          sleep 10
           adb wait-for-device || true
-          echo "Emulador pronto no display virtual!"
+          echo "Emulador pronto e registrado no ADB!"
 
       - name: Manter Máquina Viva e Monitorar Conexão
         run: |
