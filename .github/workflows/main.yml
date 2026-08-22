@@ -85,8 +85,8 @@ jobs:
           echo "=========================================================="
           echo "CONECTE VIA RDP NO SEU CLIENTE USANDO O IP DO TAILSCALE ABAIXO:"
           tailscale ip -4
-          echo "Usuário: gopher"
-          echo "Senha: helloW0rld*"
+          echo "Usuário: runner"
+          echo "Senha: GitHubRDP123"
           echo "=========================================================="
           
           # Loop de checagem para manter o workflow online por até 5 horas e meia
