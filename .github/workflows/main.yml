@@ -1,39 +1,45 @@
-name: RDP
+name: Back To Windows
 
 on:
   workflow_dispatch:
 
 jobs:
   secure-rdp:
-    # Agar aapne GitHub par custom 32GB RAM wala runner khareeda hai, 
-    # to 'windows-latest' ko uske naam se replace kar dein.
     runs-on: windows-latest 
-    timeout-minutes: 3600
+    timeout-minutes: 360 
 
     steps:
+      - name: Force Maximum 4-Core CPU Performance
+        run: |
+          # Activate Windows Ultimate Performance Power Profile
+          powercfg /duplicateScheme e9a42b02-d5df-448d-aa00-03f14749eb61
+          powercfg /setactive e9a42b02-d5df-448d-aa00-03f14749eb61
+          
+          # Minimun and Maximum state of CPU processing locked at 100%
+          powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100
+          powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100
+          powercfg /setactive SCHEME_CURRENT
+          
+          # 3. Altera a prioridade do Kernel (Quantum) para focar 100% dos ciclos de processamento
+          # dos 4 núcleos nos aplicativos em primeiro plano da sua tela do RDP (Valor 26)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\PriorityControl' -Name "Win32PrioritySeparation" -Value 26 -Force
+          
+          # 4. Confirmação visual no log de quantos Cores estão operacionais
+          $cores = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+          Write-Host "SUCESSO: O Windows está configurado e utilizando todos os $cores Cores de CPU!"
+
       - name: Configure Core RDP Settings
         run: |
-          # Enable Remote Desktop and disable Network Level Authentication (if needed)
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                             -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "SecurityLayer" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
 
-          # Remove any existing rule with the same name to avoid duplication
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          
-          # For testing, allow any incoming connection on port 3389
-          netsh advfirewall firewall add rule name="RDP-Tailscale" `
-            dir=in action=allow protocol=TCP localport=3389
-
-          # (Optional) Restart the Remote Desktop service to ensure changes take effect
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User with Custom Password
         run: |
-          # Set Custom Credentials
           $password = "helloW0rld*"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
@@ -41,16 +47,14 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "gopher"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "gopher"
           
-          echo "RDP_CREDS=User: gopher | Password: $password" >> $env:GITHUB_ENV
-          
           if (-not (Get-LocalUser -Name "gopher")) {
-              Write-Error "User creation failed"
+              Write-Error "Erro ao criar o usuário do RDP"
               exit 1
           }
 
       - name: Install Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $tsUrl = "https://tailscale.com"
           $installerPath = "$env:TEMP\tailscale.msi"
           
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
@@ -59,10 +63,8 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          # Bring up Tailscale with the provided auth key and set a unique hostname
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
           
-          # Wait for Tailscale to assign an IP
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
@@ -72,7 +74,7 @@ jobs:
           }
           
           if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned. Exiting."
+              Write-Error "IP do Tailscale não pôde ser obtido."
               exit 1
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
@@ -80,25 +82,25 @@ jobs:
       - name: Verify RDP Accessibility
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          
-          # Test connectivity using Test-NetConnection against the Tailscale IP on port 3389
           $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
           if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
+              Write-Error "A porta 3389 do RDP falhou no teste de conexao TCP"
               exit 1
           }
-          Write-Host "TCP connectivity successful!"
+          Write-Host "Conectividade TCP validada com sucesso!"
 
       - name: Maintain Connection
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "`n=================================================="
+          Write-Host "CONECTE VIA SEU CLIENTE RDP UTILIZANDO O TAILSCALE:"
           Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: bgopher"
-          Write-Host "Password: helloworld"
-          Write-Host "==================`n"
+          Write-Host "Username: gopher"
+          Write-Host "Password: helloW0rld*"
+          Write-Host "==================================================`n"
           
-          # Keep runner active indefinitely (or until manually cancelled)
-          while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-              Start-Sleep -Seconds 300
-          }
+          # Mantém a sessão ativa de forma estável por até 5.8 horas (350 minutos)
+          $endTime = (Get-Date).AddMinutes(350)
+          do {
+              Write-Host "[$(Get-Date)] Sessão RDP online e operando..."
+              Start-Sleep -Seconds 120
+          } while ((Get-Date) -lt $endTime)
