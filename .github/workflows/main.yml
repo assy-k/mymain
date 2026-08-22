@@ -40,27 +40,33 @@ jobs:
 
       - name: Instalar e Iniciar Emulador Android (Com Tela)
         run: |
-          # Instala as ferramentas do Android SDK nativas do Linux
-          sudo apt-get install -y android-sdk-platform-tools-common adb
-
-          # Instala o utilitário para gerenciar emuladores de forma simples no Actions
-          pip install android-emulator-runner-installer || true
+          # 1. Configurar as variáveis de ambiente para mapear o Android SDK nativo do GitHub Actions
+          export ANDROID_HOME=$ANDROID_SDK_ROOT
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator
           
-          # Cria e inicia um dispositivo virtual Android (AVD) com interface gráfica ativada
-          # Nota: O comando roda em segundo plano e SEM a flag '-no-window' para a tela existir no Desktop
-          sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
+          # 2. Instalar dependências necessárias para aceleração gráfica virtualizada
+          sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils xvfb android-sdk-platform-tools-common
           
-          echo "Iniciando o Android Emulator no display virtual..."
-          # Aqui o sistema prepara o display virtual x11 para segurar a janela do Android
+          echo "Iniciando o display virtual Xvfb..."
           export DISPLAY=:1
           Xvfb :1 -screen 0 1280x1024x24 &
+          sleep 3 # Aguarda o display virtual estabilizar
           
-          # Baixa uma imagem leve do Android 11 (API 30) x86_64 para máxima performance
-          sdkmanager --install "system-images;android-30;default;x86_64"
-          echo "no" | avdmanager create avd -n test_android -k "system-images;android-30;default;x86_64" --force
+          echo "Aceitando licenças do Android SDK..."
+          yes | sdkmanager --licenses || true
           
-          # Inicializa o emulador de fato dentro do ambiente virtual gráfico
-          emulator -avd test_android -gpu swiftshader_indirect -no-audio -no-boot-anim &
+          echo "Baixando imagem do Android 10..."
+          sdkmanager --install "system-images;android-29;default;x86_64"
+          
+          echo "Criando o dispositivo virtual (AVD)..."
+          echo "no" | avdmanager create avd -n test_android -k "system-images;android-29;default;x86_64" --force
+          
+          echo "Iniciando o Android Emulator em background dentro do display virtual..."
+          emulator -avd test_android -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot-save &
+          
+          echo "Aguardando o emulador iniciar o sistema básico..."
+          adb wait-for-device || true
+          echo "Emulador pronto no display virtual!"
 
       - name: Manter Máquina Viva e Monitorar Conexão
         run: |
