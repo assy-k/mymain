@@ -19,7 +19,7 @@ jobs:
           sudo apt-get install -y lxde xrdp cpu-checker
           
           # Define a senha padrão para o usuário 'gopher' se conectar no RDP
-          echo "gopher:helloW0rld*" | sudo chpasswd
+          echo "runner:GitHubRDP123" | sudo chpasswd
           
           # Configura o xrdp para usar o ambiente LXDE instalado
           echo "lxsession -s LXDE -e LXDE" > ~/.xsession
