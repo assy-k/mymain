@@ -61,10 +61,10 @@ jobs:
           
           echo "Baixando imagem do Android 11 com Google APIs e Tradutor ARM..."
           # Usando a API 30 (Android 11) com google_apis que possui excelente compatibilidade de tradução
-          sdkmanager --install "system-images;android-30;google_apis;x86_64"
+          sdkmanager --install "system-images;android-30;google_apis_playstore;x86_64"
           
           echo "Criando o dispositivo virtual (AVD)..."
-          echo "" | avdmanager create avd -n test_android -k "system-images;android-30;google_apis;x86_64" --force
+          echo "" | avdmanager create avd -n test_android -k "system-images;android-30;google_apis_playstore;x86_64" --force
           
           echo "Iniciando a interface gráfica interna..."
           lxsession -s LXDE -e LXDE &
