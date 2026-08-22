@@ -60,11 +60,11 @@ jobs:
           yes | sdkmanager --licenses || true
           
           echo "Baixando imagem do Android 11..."
-          sdkmanager --install "system-images;android-30;default;x86_64"
+          sdkmanager --install "system-images;android-30;default;arm64-v8a"
           
           echo "Criando o dispositivo virtual (AVD) de forma totalmente automatizada..."
           # O truque abaixo envia um 'Enter' vazio para TODAS as perguntas do avdmanager, pulando o prompt de profile customizado
-          echo "" | avdmanager create avd -n test_android -k "system-images;android-30;default;x86_64" --force
+          echo "" | avdmanager create avd -n test_android -k "system-images;android-30;default;arm64-v8a" --force
           
           echo "Verificando se o AVD foi criado com sucesso:"
           emulator -list-avds
