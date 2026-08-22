@@ -1,104 +1,82 @@
-name: RDP
+name: Testing on Ubuntu
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
-    # Agar aapne GitHub par custom 32GB RAM wala runner khareeda hai, 
-    # to 'windows-latest' ko uske naam se replace kar dein.
-    runs-on: windows-latest 
-    timeout-minutes: 3600
+  android-rdp-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 
 
     steps:
-      - name: Configure Core RDP Settings
-        run: |
-          # Enable Remote Desktop and disable Network Level Authentication (if needed)
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                             -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "SecurityLayer" -Value 0 -Force
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-          # Remove any existing rule with the same name to avoid duplication
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          
-          # For testing, allow any incoming connection on port 3389
-          netsh advfirewall firewall add rule name="RDP-Tailscale" `
-            dir=in action=allow protocol=TCP localport=3389
-
-          # (Optional) Restart the Remote Desktop service to ensure changes take effect
-          Restart-Service -Name TermService -Force
-
-      - name: Create RDP User with Custom Password
+      - name: Instalar Interface Gráfica (GUI) e Servidor RDP
         run: |
-          # Set Custom Credentials
-          $password = "helloW0rld*"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          sudo apt-get update
+          # Instala um ambiente desktop super leve (LXDE) e o servidor de RDP (xrdp)
+          sudo apt-get install -y lxde xrdp cpu-checker
           
-          New-LocalUser -Name "gopher" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "gopher"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "gopher"
+          # Define a senha padrão para o usuário 'gopher' se conectar no RDP
+          echo "gopher:helloW0rld*" | sudo chpasswd
           
-          echo "RDP_CREDS=User: gopher | Password: $password" >> $env:GITHUB_ENV
-          
-          if (-not (Get-LocalUser -Name "gopher")) {
-              Write-Error "User creation failed"
-              exit 1
-          }
+          # Configura o xrdp para usar o ambiente LXDE instalado
+          echo "lxsession -s LXDE -e LXDE" > ~/.xsession
+          sudo systemctl restart xrdp
 
-      - name: Install Tailscale
+      - name: Habilitar Permissões de Virtualização KVM (Para o Android)
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          # Libera o acesso direto ao processador para o emulador rodar rápido
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          kvm-ok
 
-      - name: Establish Tailscale Connection
-        run: |
-          # Bring up Tailscale with the provided auth key and set a unique hostname
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
-          
-          # Wait for Tailscale to assign an IP
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-              Start-Sleep -Seconds 5
-              $retries++
-          }
-          
-          if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned. Exiting."
-              exit 1
-          }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-      
-      - name: Verify RDP Accessibility
-        run: |
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          
-          # Test connectivity using Test-NetConnection against the Tailscale IP on port 3389
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
-              exit 1
-          }
-          Write-Host "TCP connectivity successful!"
+      - name: Conectar ao Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
 
-      - name: Maintain Connection
+      - name: Instalar e Iniciar Emulador Android (Com Tela)
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: bgopher"
-          Write-Host "Password: helloworld"
-          Write-Host "==================`n"
+          # Instala as ferramentas do Android SDK nativas do Linux
+          sudo apt-get install -y android-sdk-platform-tools-common adb
+
+          # Instala o utilitário para gerenciar emuladores de forma simples no Actions
+          pip install android-emulator-runner-installer || true
           
-          # Keep runner active indefinitely (or until manually cancelled)
-          while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-              Start-Sleep -Seconds 300
+          # Cria e inicia um dispositivo virtual Android (AVD) com interface gráfica ativada
+          # Nota: O comando roda em segundo plano e SEM a flag '-no-window' para a tela existir no Desktop
+          sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
+          
+          echo "Iniciando o Android Emulator no display virtual..."
+          # Aqui o sistema prepara o display virtual x11 para segurar a janela do Android
+          export DISPLAY=:1
+          Xvfb :1 -screen 0 1280x1024x24 &
+          
+          # Baixa uma imagem leve do Android 11 (API 30) x86_64 para máxima performance
+          sdkmanager --install "system-images;android-30;default;x86_64"
+          echo "no" | avdmanager create avd -n test_android -k "system-images;android-30;default;x86_64" --force
+          
+          # Inicializa o emulador de fato dentro do ambiente virtual gráfico
+          emulator -avd test_android -gpu swiftshader_indirect -no-audio -no-boot-anim &
+
+      - name: Manter Máquina Viva e Monitorar Conexão
+        run: |
+          # Mostra o IP do Tailscale deste runner para você saber onde conectar
+          echo "=========================================================="
+          echo "CONECTE VIA RDP NO SEU CLIENTE USANDO O IP DO TAILSCALE ABAIXO:"
+          tailscale ip -4
+          echo "Usuário: gopher"
+          echo "Senha: helloW0rld*"
+          echo "=========================================================="
+          
+          # Loop de checagem para manter o workflow online por até 5 horas e meia
+          $endTime = (Get-Date).AddMinutes(330)
+          $endTimeUnix = [DateTimeOffset]::UtcNow.AddMinutes(330).ToUnixTimeSeconds()
+          
+          while ($(date +%s) -lt $endTimeUnix) {
+              echo "Runner ativo e aguardando conexões via Tailscale..."
+              sleep 60
           }
