@@ -1,95 +1,104 @@
-name: Testing on Ubuntu
+name: RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  android-rdp-linux:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360 
+  secure-rdp:
+    # Agar aapne GitHub par custom 32GB RAM wala runner khareeda hai, 
+    # to 'windows-latest' ko uske naam se replace kar dein.
+    runs-on: windows-latest 
+    timeout-minutes: 3600
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Instalar Interface Gráfica (GUI), Servidor RDP e Scrcpy
+      - name: Configure Core RDP Settings
         run: |
-          sudo apt-get update
-          # Instala ambiente desktop leve, servidor RDP, display virtual e o espelhador de tela (scrcpy)
-          sudo apt-get install -y lxde xrdp xvfb cpu-checker android-sdk-platform-tools-common scrcpy
-          
-          # Define a senha padrão para o usuário 'runner'
-          echo "runner:GitHubRDP123" | sudo chpasswd
-          
-          # Configura o xrdp para carregar corretamente a sessão gráfica do LXDE
-          echo "startlxde" > ~/.xsession
-          chmod +x ~/.xsession
-          
-          # Correção de permissão nos certificados locais do RDP para evitar tela preta
-          sudo adduser xrdp ssl-cert
-          sudo systemctl restart xrdp
+          # Enable Remote Desktop and disable Network Level Authentication (if needed)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                             -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "SecurityLayer" -Value 0 -Force
 
-      - name: Habilitar Permissões de Virtualização KVM (Para o Android)
+          # Remove any existing rule with the same name to avoid duplication
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          
+          # For testing, allow any incoming connection on port 3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale" `
+            dir=in action=allow protocol=TCP localport=3389
+
+          # (Optional) Restart the Remote Desktop service to ensure changes take effect
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Custom Password
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          kvm-ok
+          # Set Custom Credentials
+          $password = "helloW0rld*"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          
+          New-LocalUser -Name "gopher" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "gopher"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "gopher"
+          
+          echo "RDP_CREDS=User: gopher | Password: $password" >> $env:GITHUB_ENV
+          
+          if (-not (Get-LocalUser -Name "gopher")) {
+              Write-Error "User creation failed"
+              exit 1
+          }
 
-      - name: Conectar ao Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-
-      - name: Instalar e Iniciar Emulador Android (Com Tradutor ARM)
+      - name: Install Tailscale
         run: |
-          # 1. Configurar caminhos e variáveis globais do SDK
-          export ANDROID_HOME=$ANDROID_SDK_ROOT
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator
-          export ANDROID_AVD_HOME=$HOME/.android/avd
-          mkdir -p $ANDROID_AVD_HOME
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
 
-          echo "Iniciando o display virtual de fundo Xvfb na porta :1..."
-          Xvfb :1 -screen 0 1280x1024x24 &
-          sleep 5
-          
-          # Força todos os comandos gráficos subsequentes a rodarem dentro do display criado
-          export DISPLAY=:1
-          
-          echo "Aceitando licenças do Android SDK..."
-          yes | sdkmanager --licenses || true
-          
-          echo "Baixando imagem do Android 11 com Google APIs e Tradutor ARM..."
-          # Usando a API 30 (Android 11) com google_apis que possui excelente compatibilidade de tradução
-          sdkmanager --install "system-images;android-30;google_apis_playstore;x86_64"
-          
-          echo "Criando o dispositivo virtual (AVD)..."
-          echo "" | avdmanager create avd -n test_android -k "system-images;android-30;google_apis_playstore;x86_64" --force
-          
-          echo "Iniciando a interface gráfica interna..."
-          lxsession -s LXDE -e LXDE &
-          sleep 5
-
-          echo "Iniciando o Android Emulator..."
-          # Iniciando o emulador com suporte a aceleração e tradução binária
-          emulator -avd test_android -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot-save -qemu -enable-kvm &
-          
-          echo "Aguardando o emulador registrar no ADB..."
-          sleep 20
-          /usr/local/lib/android/sdk/platform-tools/adb wait-for-device || true
-          echo "Emulador pronto!"
-
-      - name: Manter Máquina Viva e Monitorar Conexão
+      - name: Establish Tailscale Connection
         run: |
-          echo "=========================================================="
-          echo "CONECTE VIA RDP NO SEU CLIENTE USANDO O IP DO TAILSCALE ABAIXO:"
-          tailscale ip -4
-          echo "Usuário: runner"
-          echo "Senha: GitHubRDP123"
-          echo "=========================================================="
+          # Bring up Tailscale with the provided auth key and set a unique hostname
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
           
-          # Loop em puro Bash para manter o workflow online por 5 horas e meia
-          for i in {1..330}; do
-              echo "Runner ativo e aguardando conexões via Tailscale... (Minuto $i de 330)"
-              sleep 60
-          done
+          # Wait for Tailscale to assign an IP
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
+          }
+          
+          if (-not $tsIP) {
+              Write-Error "Tailscale IP not assigned. Exiting."
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+      
+      - name: Verify RDP Accessibility
+        run: |
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          
+          # Test connectivity using Test-NetConnection against the Tailscale IP on port 3389
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "TCP connection to RDP port 3389 failed"
+              exit 1
+          }
+          Write-Host "TCP connectivity successful!"
+
+      - name: Maintain Connection
+        run: |
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: bgopher"
+          Write-Host "Password: helloworld"
+          Write-Host "==================`n"
+          
+          # Keep runner active indefinitely (or until manually cancelled)
+          while ($true) {
+              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              Start-Sleep -Seconds 300
+          }
