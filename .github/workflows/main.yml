@@ -113,38 +113,12 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
       
-          # Get latest stable Mullvad Browser release
-          $release = Invoke-RestMethod `
-            -Uri "https://api.github.com/repos/mullvad/mullvad-browser/releases/latest" `
-            -Headers @{
-              "Accept" = "application/vnd.github+json"
-              "User-Agent" = "GitHub-Actions"
-            }
-      
-          $version = $release.tag_name
-      
-          if (-not $version) {
-            throw "Could not determine latest Mullvad Browser version."
-          }
-      
-          $assetName = "mullvad-browser-windows-x86_64-$version.exe"
-      
-          $asset = $release.assets |
-            Where-Object { $_.name -eq $assetName } |
-            Select-Object -First 1
-      
-          if (-not $asset) {
-            throw "Could not find Windows installer: $assetName"
-          }
-      
-          $downloadUrl = $asset.browser_download_url
+          $url = "https://mullvad.net/en/download/browser/windows-x86_64/latest"
           $installerPath = "$env:TEMP\mullvad-browser.exe"
       
-          Write-Host "Latest Mullvad Browser: $version"
-          Write-Host "Downloading: $downloadUrl"
-      
+          Write-Host "Downloading latest Mullvad Browser..."
           Invoke-WebRequest `
-            -Uri $downloadUrl `
+            -Uri $url `
             -OutFile $installerPath
       
           if (-not (Test-Path $installerPath)) {
@@ -165,9 +139,9 @@ jobs:
       
           Remove-Item $installerPath -Force
       
-          # Standard installation location
+          # Mullvad's standard installation is inside the user's profile.
           $browser = Get-ChildItem `
-            -Path "$env:LOCALAPPDATA\Mullvad" `
+            -Path "$env:LOCALAPPDATA" `
             -Filter "mullvadbrowser.exe" `
             -Recurse `
             -File `
@@ -178,15 +152,15 @@ jobs:
             throw "Mullvad Browser was not found after installation."
           }
       
-          $installedVersion = $browser.VersionInfo.ProductVersion
+          $version = $browser.VersionInfo.ProductVersion
       
           Write-Host ""
           Write-Host "=========================================="
           Write-Host "Mullvad Browser installed successfully"
-          Write-Host "Release: $version"
-          Write-Host "Version: $installedVersion"
+          Write-Host "Version: $version"
           Write-Host "Path:    $($browser.FullName)"
           Write-Host "=========================================="
+
 
 
 
