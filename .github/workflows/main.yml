@@ -129,22 +129,10 @@ jobs:
             $url
       
           if ($LASTEXITCODE -ne 0) {
-            throw "Mullvad Browser download failed with exit code $LASTEXITCODE."
+            throw "Download failed with exit code $LASTEXITCODE."
           }
       
-          if (-not (Test-Path $installerPath)) {
-            throw "Mullvad Browser installer was not downloaded."
-          }
-      
-          $file = Get-Item $installerPath
-      
-          if ($file.Length -lt 10MB) {
-            throw "Downloaded Mullvad Browser installer is unexpectedly small: $($file.Length) bytes."
-          }
-      
-          Write-Host "Downloaded $($file.Length) bytes."
-      
-          Write-Host "Installing Mullvad Browser silently..."
+          Write-Host "Installing Mullvad Browser..."
       
           $process = Start-Process `
             -FilePath $installerPath `
@@ -152,23 +140,18 @@ jobs:
             -Wait `
             -PassThru
       
-          Write-Host "Installer exit code: $($process.ExitCode)"
-      
           if ($process.ExitCode -ne 0) {
-            throw "Mullvad Browser installer failed with exit code $($process.ExitCode)."
+            throw "Installer failed with exit code $($process.ExitCode)."
           }
       
           Remove-Item $installerPath -Force
       
-          # Find the installed browser
+          # Find installed browser
           $browser = Get-ChildItem `
             -Path @(
-              "$env:LOCALAPPDATA\Mullvad",
-              "$env:LOCALAPPDATA\MullvadBrowser",
-              "$env:ProgramFiles\Mullvad",
-              "$env:ProgramFiles\MullvadBrowser",
-              "${env:ProgramFiles(x86)}\Mullvad",
-              "${env:ProgramFiles(x86)}\MullvadBrowser"
+              "$env:LOCALAPPDATA",
+              "$env:ProgramFiles",
+              "${env:ProgramFiles(x86)}"
             ) `
             -Filter "mullvadbrowser.exe" `
             -Recurse `
@@ -180,14 +163,33 @@ jobs:
             throw "Mullvad Browser was not found after installation."
           }
       
+          $browserPath = $browser.FullName
           $version = $browser.VersionInfo.ProductVersion
       
-          Write-Host ""
-          Write-Host "=========================================="
-          Write-Host "Mullvad Browser installed successfully"
+          Write-Host "Mullvad Browser installed."
           Write-Host "Version: $version"
-          Write-Host "Path:    $($browser.FullName)"
-          Write-Host "=========================================="
+          Write-Host "Path: $browserPath"
+      
+          # Create Desktop shortcut
+          $desktop = [Environment]::GetFolderPath("Desktop")
+          $shortcutPath = Join-Path $desktop "Mullvad Browser.lnk"
+      
+          $shell = New-Object -ComObject WScript.Shell
+          $shortcut = $shell.CreateShortcut($shortcutPath)
+      
+          $shortcut.TargetPath = $browserPath
+          $shortcut.WorkingDirectory = Split-Path $browserPath
+          $shortcut.Description = "Mullvad Browser"
+          $shortcut.IconLocation = "$browserPath,0"
+      
+          $shortcut.Save()
+      
+          Write-Host "Desktop shortcut created:"
+          Write-Host $shortcutPath
+      
+          # Make browser path available to later steps
+          "MULLVAD_BROWSER_PATH=$browserPath" >> $env:GITHUB_ENV
+
       
       
 
