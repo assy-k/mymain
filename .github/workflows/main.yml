@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 360 
 
     steps:
-      - name: Force Hifh Performance Profile with CPU Parking Disabled
+      - name: Force High Performance Profile with CPU Parking Disabled
         run: |
           # Activate Windows High Performance Power Profile
           powercfg /setactive SCHEME_MIN
@@ -170,13 +170,33 @@ jobs:
           Write-Host "Version: $version"
           Write-Host "Path: $browserPath"
       
-          # Create shortcut on gopher's Desktop
-          $gopherDesktop = "C:\Users\gopher\Desktop"
-          $shortcutPath = Join-Path $gopherDesktop "Mullvad Browser.lnk"
+          # Find the actual Windows profile directory for the "gopher" account
+          $gopher = Get-CimInstance Win32_UserAccount `
+            -Filter "Name='gopher' AND LocalAccount=True"
           
+          if (-not $gopher) {
+              throw "User 'gopher' was not found."
+          }
+          
+          $profileKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($gopher.SID)"
+          
+          if (-not (Test-Path $profileKey)) {
+              throw "Windows profile for 'gopher' was not found."
+          }
+          
+          $gopherProfile = (Get-ItemProperty $profileKey).ProfileImagePath
+          $gopherDesktop = Join-Path $gopherProfile "Desktop"
+          
+          Write-Host "Gopher profile:  $gopherProfile"
+          Write-Host "Gopher desktop: $gopherDesktop"
+          
+          # Create Desktop if it doesn't exist yet
           if (-not (Test-Path $gopherDesktop)) {
               New-Item -ItemType Directory -Path $gopherDesktop -Force | Out-Null
           }
+          
+          # Create shortcut
+          $shortcutPath = Join-Path $gopherDesktop "Mullvad Browser.lnk"
           
           $wshShell = New-Object -ComObject WScript.Shell
           $shortcut = $wshShell.CreateShortcut($shortcutPath)
@@ -188,8 +208,8 @@ jobs:
           
           $shortcut.Save()
           
-          Write-Host "Desktop shortcut created for gopher:"
-          Write-Host $shortcutPath
+          Write-Host "Shortcut created: $shortcutPath"
+
 
 
       
