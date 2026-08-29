@@ -60,47 +60,77 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
       
+          $apiUrl = 'https://api.github.com/repos/brave/brave-browser/releases/latest'
           $installer = Join-Path $env:TEMP 'BraveBrowserSilentSetup.exe'
-          $url = 'https://brave-browser-downloads.s3.brave.com/latest/BraveBrowserSilentSetup.exe'
       
-          Write-Host "Downloading Brave Browser..."
-          Write-Host "URL: $url"
-          Write-Host "Destination: $installer"
+          Write-Host "Finding latest Brave stable release..."
+      
+          $release = Invoke-RestMethod `
+            -Uri $apiUrl `
+            -Headers @{
+              'Accept' = 'application/vnd.github+json'
+              'User-Agent' = 'GitHub-Actions-Brave-Installer'
+            }
+      
+          if (-not $release.tag_name) {
+              throw "Unable to determine latest Brave release."
+          }
+      
+          Write-Host "Latest Brave release: $($release.tag_name)"
+      
+          # Find the Windows x64 silent installer in the official release assets.
+          $asset = $release.assets |
+            Where-Object {
+              $_.name -match '^BraveBrowserStandaloneSilentSetup.*\.exe$' -or
+              $_.name -match '^BraveBrowserSilentSetup.*\.exe$'
+            } |
+            Select-Object -First 1
+      
+          if (-not $asset) {
+              Write-Host "Available Windows installer assets:"
+              $release.assets |
+                Where-Object { $_.name -match '\.exe$' } |
+                ForEach-Object { Write-Host "  $($_.name)" }
+      
+              throw "Could not find a Brave Windows silent installer in the latest release."
+          }
+      
+          Write-Host "Installer: $($asset.name)"
+          Write-Host "Download:  $($asset.browser_download_url)"
       
           # Download
           Invoke-WebRequest `
-            -Uri $url `
+            -Uri $asset.browser_download_url `
             -OutFile $installer `
             -UseBasicParsing
       
-          # Verify file exists
+          # Verify download
           if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
               throw "Brave installer was not downloaded."
           }
       
-          # Verify the downloaded file isn't empty
           $file = Get-Item -LiteralPath $installer
       
           if ($file.Length -lt 100KB) {
-              throw "Downloaded Brave installer is unexpectedly small: $($file.Length) bytes"
+              throw "Downloaded installer is unexpectedly small: $($file.Length) bytes"
           }
       
-          Write-Host "Downloaded $($file.Length) bytes."
+          Write-Host "Downloaded: $($file.Length) bytes"
       
           # Verify Authenticode signature
-          Write-Host "Verifying installer signature..."
+          Write-Host "Checking Authenticode signature..."
       
           $signature = Get-AuthenticodeSignature -FilePath $installer
       
           if ($signature.Status -ne 'Valid') {
-              throw "Brave installer signature is not valid. Signature status: $($signature.Status)"
+              throw "Brave installer signature is invalid: $($signature.Status)"
           }
       
-          Write-Host "Installer signature is valid."
+          Write-Host "Signature: VALID"
           Write-Host "Signer: $($signature.SignerCertificate.Subject)"
       
-          # Install silently
-          Write-Host "Installing Brave Browser..."
+          # Install
+          Write-Host "Installing Brave silently..."
       
           $process = Start-Process `
             -FilePath $installer `
@@ -109,13 +139,12 @@ jobs:
             -PassThru `
             -NoNewWindow
       
-          Write-Host "Brave installer exit code: $($process.ExitCode)"
+          Write-Host "Installer exit code: $($process.ExitCode)"
       
           if ($process.ExitCode -ne 0) {
               throw "Brave installer failed with exit code $($process.ExitCode)."
           }
       
-          # Give the installer a moment to finish creating files
           Start-Sleep -Seconds 2
       
           # Locate Brave
@@ -126,29 +155,30 @@ jobs:
           )
       
           $bravePath = $braveCandidates |
-              Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+              Where-Object {
+                  $_ -and (Test-Path -LiteralPath $_ -PathType Leaf)
+              } |
               Select-Object -First 1
       
           if (-not $bravePath) {
-              throw "Brave installation completed, but brave.exe could not be found."
+              throw "Installer succeeded, but brave.exe was not found."
           }
       
-          Write-Host "Brave executable found:"
-          Write-Host "  $bravePath"
+          # Get installed version
+          $versionInfo = (Get-Item -LiteralPath $bravePath).VersionInfo
+          $version = $versionInfo.ProductVersion
       
-          # Print installed version
-          $braveVersion = (Get-Item -LiteralPath $bravePath).VersionInfo.ProductVersion
-      
-          if ([string]::IsNullOrWhiteSpace($braveVersion)) {
-              throw "Brave was found, but its version could not be determined."
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              throw "Brave executable was found, but its version could not be determined."
           }
       
           Write-Host ""
-          Write-Host "========================================"
+          Write-Host "=========================================="
           Write-Host "Brave Browser installed successfully"
-          Write-Host "Version: $braveVersion"
-          Write-Host "Path:    $bravePath"
-          Write-Host "========================================"
+          Write-Host "Release:  $($release.tag_name)"
+          Write-Host "Version:  $version"
+          Write-Host "Path:     $bravePath"
+          Write-Host "=========================================="
       
           # Cleanup
           Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
