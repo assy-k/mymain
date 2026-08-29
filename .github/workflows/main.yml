@@ -55,6 +55,104 @@ jobs:
               exit 1
           }
 
+      - name: Install Brave Browser
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+      
+          $installer = Join-Path $env:TEMP 'BraveBrowserSilentSetup.exe'
+          $url = 'https://brave-browser-downloads.s3.brave.com/latest/BraveBrowserSilentSetup.exe'
+      
+          Write-Host "Downloading Brave Browser..."
+          Write-Host "URL: $url"
+          Write-Host "Destination: $installer"
+      
+          # Download
+          Invoke-WebRequest `
+            -Uri $url `
+            -OutFile $installer `
+            -UseBasicParsing
+      
+          # Verify file exists
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+              throw "Brave installer was not downloaded."
+          }
+      
+          # Verify the downloaded file isn't empty
+          $file = Get-Item -LiteralPath $installer
+      
+          if ($file.Length -lt 100KB) {
+              throw "Downloaded Brave installer is unexpectedly small: $($file.Length) bytes"
+          }
+      
+          Write-Host "Downloaded $($file.Length) bytes."
+      
+          # Verify Authenticode signature
+          Write-Host "Verifying installer signature..."
+      
+          $signature = Get-AuthenticodeSignature -FilePath $installer
+      
+          if ($signature.Status -ne 'Valid') {
+              throw "Brave installer signature is not valid. Signature status: $($signature.Status)"
+          }
+      
+          Write-Host "Installer signature is valid."
+          Write-Host "Signer: $($signature.SignerCertificate.Subject)"
+      
+          # Install silently
+          Write-Host "Installing Brave Browser..."
+      
+          $process = Start-Process `
+            -FilePath $installer `
+            -ArgumentList '/silent', '/install' `
+            -Wait `
+            -PassThru `
+            -NoNewWindow
+      
+          Write-Host "Brave installer exit code: $($process.ExitCode)"
+      
+          if ($process.ExitCode -ne 0) {
+              throw "Brave installer failed with exit code $($process.ExitCode)."
+          }
+      
+          # Give the installer a moment to finish creating files
+          Start-Sleep -Seconds 2
+      
+          # Locate Brave
+          $braveCandidates = @(
+              (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\Application\brave.exe'),
+              (Join-Path $env:ProgramFiles 'BraveSoftware\Brave-Browser\Application\brave.exe'),
+              (Join-Path ${env:ProgramFiles(x86)} 'BraveSoftware\Brave-Browser\Application\brave.exe')
+          )
+      
+          $bravePath = $braveCandidates |
+              Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+              Select-Object -First 1
+      
+          if (-not $bravePath) {
+              throw "Brave installation completed, but brave.exe could not be found."
+          }
+      
+          Write-Host "Brave executable found:"
+          Write-Host "  $bravePath"
+      
+          # Print installed version
+          $braveVersion = (Get-Item -LiteralPath $bravePath).VersionInfo.ProductVersion
+      
+          if ([string]::IsNullOrWhiteSpace($braveVersion)) {
+              throw "Brave was found, but its version could not be determined."
+          }
+      
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "Brave Browser installed successfully"
+          Write-Host "Version: $braveVersion"
+          Write-Host "Path:    $bravePath"
+          Write-Host "========================================"
+      
+          # Cleanup
+          Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+
       - name: Install Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
