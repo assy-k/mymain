@@ -11,12 +11,9 @@ jobs:
     steps:
       - name: Force Maximum 4-Core CPU Performance
         run: |
-          Write-Host "Available power plans:"
-          powercfg /list
           
-          # Activate Windows Ultimate Performance Power Profile
-          powercfg /duplicateScheme e9a42b02-d5df-448d-aa00-03f14749eb61
-          powercfg /setactive e9a42b02-d5df-448d-aa00-03f14749eb61
+          # Activate Windows High Performance Power Profile
+          powercfg /setactive SCHEME_MIN
           
           # Minimun and Maximum state of CPU processing locked at 100%
           powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100
@@ -28,8 +25,8 @@ jobs:
           # Activate
           powercfg /setactive SCHEME_CURRENT
 
-          Write-Host "Final CPU settings:"
           powercfg /query SCHEME_CURRENT SUB_PROCESSOR
+           Write-Host "Final CPU settings above."
 
           # Priority on foreground applications
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\PriorityControl' -Name "Win32PrioritySeparation" -Value 26 -Force
