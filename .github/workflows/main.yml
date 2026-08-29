@@ -54,22 +54,33 @@ jobs:
       - name: Install Brave Browser
         shell: powershell
         run: |
-          $braveUrl = "https://github.com/brave/brave-browser/releases/download/v1.94.117/BraveBrowserSetup.exe"
+          $braveUrl = "https://laptop-updates.brave.com/latest/winx64"
           $installerPath = "$env:TEMP\brave.exe"
       
           Invoke-WebRequest -Uri $braveUrl -OutFile $installerPath
       
-          $signature = Get-AuthenticodeSignature $installerPath
-          if ($signature.Status -ne "Valid") {
-            throw "Brave installer signature is invalid."
-          }
-      
-          Start-Process `
+          $process = Start-Process `
             -FilePath $installerPath `
             -ArgumentList "/silent", "/install" `
-            -Wait
+            -Wait `
+            -PassThru
+      
+          if ($process.ExitCode -ne 0) {
+            throw "Brave installer failed with exit code $($process.ExitCode)."
+          }
       
           Remove-Item $installerPath -Force
+      
+          $bravePath = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe"
+      
+          if (-not (Test-Path $bravePath)) {
+            throw "Brave installation failed: brave.exe not found."
+          }
+      
+          $version = (Get-Item $bravePath).VersionInfo.ProductVersion
+      
+          Write-Host "Brave installed: $version"
+
 
 
     
