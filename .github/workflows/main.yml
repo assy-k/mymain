@@ -18,16 +18,19 @@ jobs:
           # Minimun and Maximum state of CPU processing locked at 100%
           powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100
           powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100
-          powercfg /setactive SCHEME_CURRENT
-          
-          # 3. Altera a prioridade do Kernel (Quantum) para focar 100% dos ciclos de processamento
-          # dos 4 núcleos nos aplicativos em primeiro plano da sua tela do RDP (Valor 26)
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\PriorityControl' -Name "Win32PrioritySeparation" -Value 26 -Force
-          
-          # 4. Confirmação visual no log de quantos Cores estão operacionais
-          $cores = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
-          Write-Host "SUCESSO: O Windows está configurado e utilizando todos os $cores Cores de CPU!"
 
+          # Disable core parking
+          powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100
+
+          # Activate
+          powercfg /setactive SCHEME_CURRENT
+
+          Write-Host "Final CPU settings:"
+          powercfg /query SCHEME_CURRENT SUB_PROCESSOR
+
+          # Priority on foreground applications
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\PriorityControl' -Name "Win32PrioritySeparation" -Value 26 -Force
+  
       - name: Configure Core RDP Settings
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
