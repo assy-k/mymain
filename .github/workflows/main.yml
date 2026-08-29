@@ -54,116 +54,23 @@ jobs:
       - name: Install Brave Browser
         shell: powershell
         run: |
-          $ErrorActionPreference = 'Stop'
+          $braveUrl = "https://github.com/brave/brave-browser/releases/download/v1.94.117/BraveBrowserSetup.exe"
+          $installerPath = "$env:TEMP\brave.exe"
       
-          $apiUrl = 'https://api.github.com/repos/brave/brave-browser/releases/latest'
-          $installer = Join-Path $env:TEMP 'BraveBrowserStandaloneSilentSetup.exe'
+          Invoke-WebRequest -Uri $braveUrl -OutFile $installerPath
       
-          Write-Host "Finding latest Brave stable release..."
-      
-          $release = Invoke-RestMethod `
-            -Uri $apiUrl `
-            -Headers @{
-              'Accept' = 'application/vnd.github+json'
-              'User-Agent' = 'GitHub-Actions-Brave-Installer'
-            }
-      
-          $asset = $release.assets |
-            Where-Object { $_.name -eq 'BraveBrowserStandaloneSilentSetup.exe' } |
-            Select-Object -First 1
-      
-          if (-not $asset) {
-              throw "BraveBrowserStandaloneSilentSetup.exe was not found."
+          $signature = Get-AuthenticodeSignature $installerPath
+          if ($signature.Status -ne "Valid") {
+            throw "Brave installer signature is invalid."
           }
       
-          Write-Host "Latest Brave release: $($release.tag_name)"
-          Write-Host "Download: $($asset.browser_download_url)"
+          Start-Process `
+            -FilePath $installerPath `
+            -ArgumentList "/silent", "/install" `
+            -Wait
       
-          & curl.exe `
-            --fail `
-            --location `
-            --retry 3 `
-            --connect-timeout 30 `
-            --max-time 300 `
-            --output $installer `
-            $asset.browser_download_url
-      
-          if ($LASTEXITCODE -ne 0) {
-              throw "curl failed with exit code $LASTEXITCODE."
-          }
-      
-          $signature = Get-AuthenticodeSignature $installer
-      
-          if ($signature.Status -ne 'Valid') {
-              throw "Invalid Authenticode signature: $($signature.Status)"
-          }
-      
-          Write-Host "Signature: VALID"
-          Write-Host "Starting Brave installer..."
-      
-          $process = Start-Process `
-            -FilePath $installer `
-            -ArgumentList '/silent', '/install' `
-            -PassThru
-      
-          Write-Host "Installer PID: $($process.Id)"
-      
-          # Give the installer 15 seconds.
-          Start-Sleep -Seconds 15
-      
-          Write-Host ""
-          Write-Host "========== INSTALLER DIAGNOSTICS =========="
-      
-          $installerProcess = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
-      
-          if ($installerProcess) {
-              Write-Host "Installer is STILL RUNNING."
-      
-              $installerProcess |
-                  Select-Object Id, ProcessName, CPU, StartTime, Responding |
-                  Format-List
-          }
-          else {
-              Write-Host "Installer process has exited."
-              Write-Host "Exit code: $($process.ExitCode)"
-          }
-      
-          Write-Host ""
-          Write-Host "========== RELATED PROCESSES =========="
-      
-          Get-CimInstance Win32_Process |
-              Where-Object {
-                  $_.Name -match 'brave|setup|update'
-              } |
-              Select-Object ProcessId, ParentProcessId, Name, CommandLine |
-              Format-List
-      
-          Write-Host ""
-          Write-Host "========== BRAVE FILES =========="
-      
-          Get-ChildItem `
-              "$env:LOCALAPPDATA\BraveSoftware" `
-              -Recurse `
-              -ErrorAction SilentlyContinue |
-              Select-Object FullName,Length,LastWriteTime |
-              Format-Table -AutoSize
-      
-          Write-Host ""
-          Write-Host "========== INSTALLER TEMP FILES =========="
-      
-          Get-ChildItem `
-              "$env:TEMP" `
-              -ErrorAction SilentlyContinue |
-              Where-Object {
-                  $_.Name -match 'brave|setup'
-              } |
-              Select-Object FullName,Length,LastWriteTime |
-              Format-Table -AutoSize
-      
-          # Kill the installer so the CI job doesn't hang.
-          Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-      
-          throw "Brave installer did not complete within the diagnostic timeout."
+          Remove-Item $installerPath -Force
+
 
     
 
