@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: Force Maximum 4-Core CPU Performance
         run: |
+          Write-Host "Available power plans:"
+          powercfg /list
+          
           # Activate Windows Ultimate Performance Power Profile
           powercfg /duplicateScheme e9a42b02-d5df-448d-aa00-03f14749eb61
           powercfg /setactive e9a42b02-d5df-448d-aa00-03f14749eb61
