@@ -54,10 +54,26 @@ jobs:
       - name: Install Brave Browser
         shell: powershell
         run: |
-          $braveUrl = "https://laptop-updates.brave.com/latest/winx64"
+          $ErrorActionPreference = "Stop"
+      
+          $release = Invoke-RestMethod `
+            -Uri "https://api.github.com/repos/brave/brave-browser/releases/latest" `
+            -Headers @{
+              "User-Agent" = "GitHub-Actions"
+            }
+      
+          $version = $release.tag_name
+          $braveUrl = "https://github.com/brave/brave-browser/releases/download/$version/BraveBrowserSetup.exe"
           $installerPath = "$env:TEMP\brave.exe"
       
-          Invoke-WebRequest -Uri $braveUrl -OutFile $installerPath
+          Write-Host "Latest Brave: $version"
+          Write-Host "Downloading: $braveUrl"
+      
+          Invoke-WebRequest `
+            -Uri $braveUrl `
+            -OutFile $installerPath
+      
+          Write-Host "Installing..."
       
           $process = Start-Process `
             -FilePath $installerPath `
@@ -71,15 +87,25 @@ jobs:
       
           Remove-Item $installerPath -Force
       
-          $bravePath = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe"
+          $brave = Get-ChildItem `
+            -Path @(
+              "$env:LOCALAPPDATA\BraveSoftware",
+              "$env:ProgramFiles\BraveSoftware",
+              "${env:ProgramFiles(x86)}\BraveSoftware"
+            ) `
+            -Filter "brave.exe" `
+            -Recurse `
+            -File `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1
       
-          if (-not (Test-Path $bravePath)) {
-            throw "Brave installation failed: brave.exe not found."
+          if (-not $brave) {
+            throw "Brave was not found after installation."
           }
       
-          $version = (Get-Item $bravePath).VersionInfo.ProductVersion
-      
-          Write-Host "Brave installed: $version"
+          Write-Host "Brave installed: $($brave.VersionInfo.ProductVersion)"
+          Write-Host "Path: $($brave.FullName)"
+
 
 
 
