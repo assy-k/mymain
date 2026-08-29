@@ -108,6 +108,88 @@ jobs:
 
 
 
+          - name: Install Mullvad Browser
+            shell: powershell
+            run: |
+              $ErrorActionPreference = "Stop"
+          
+              # Get latest stable Mullvad Browser release
+              $release = Invoke-RestMethod `
+                -Uri "https://api.github.com/repos/mullvad/mullvad-browser/releases/latest" `
+                -Headers @{
+                  "Accept" = "application/vnd.github+json"
+                  "User-Agent" = "GitHub-Actions"
+                }
+          
+              $version = $release.tag_name
+          
+              if (-not $version) {
+                throw "Could not determine latest Mullvad Browser version."
+              }
+          
+              $assetName = "mullvad-browser-windows-x86_64-$version.exe"
+          
+              $asset = $release.assets |
+                Where-Object { $_.name -eq $assetName } |
+                Select-Object -First 1
+          
+              if (-not $asset) {
+                throw "Could not find Windows installer: $assetName"
+              }
+          
+              $downloadUrl = $asset.browser_download_url
+              $installerPath = "$env:TEMP\mullvad-browser.exe"
+          
+              Write-Host "Latest Mullvad Browser: $version"
+              Write-Host "Downloading: $downloadUrl"
+          
+              Invoke-WebRequest `
+                -Uri $downloadUrl `
+                -OutFile $installerPath
+          
+              if (-not (Test-Path $installerPath)) {
+                throw "Mullvad Browser installer was not downloaded."
+              }
+          
+              Write-Host "Installing Mullvad Browser silently..."
+          
+              $process = Start-Process `
+                -FilePath $installerPath `
+                -ArgumentList "/S" `
+                -Wait `
+                -PassThru
+          
+              if ($process.ExitCode -ne 0) {
+                throw "Mullvad Browser installer failed with exit code $($process.ExitCode)."
+              }
+          
+              Remove-Item $installerPath -Force
+          
+              # Standard installation location
+              $browser = Get-ChildItem `
+                -Path "$env:LOCALAPPDATA\Mullvad" `
+                -Filter "mullvadbrowser.exe" `
+                -Recurse `
+                -File `
+                -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+          
+              if (-not $browser) {
+                throw "Mullvad Browser was not found after installation."
+              }
+          
+              $installedVersion = $browser.VersionInfo.ProductVersion
+          
+              Write-Host ""
+              Write-Host "=========================================="
+              Write-Host "Mullvad Browser installed successfully"
+              Write-Host "Release: $version"
+              Write-Host "Version: $installedVersion"
+              Write-Host "Path:    $($browser.FullName)"
+              Write-Host "=========================================="
+
+
+
 
     
 
