@@ -111,20 +111,40 @@ jobs:
       - name: Install Mullvad Browser
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
+      
           $url = "https://mullvad.net/en/download/browser/win64/latest"
           $installerPath = "$env:TEMP\mullvad-browser.exe"
       
           Write-Host "Downloading latest Mullvad Browser..."
       
-          Invoke-WebRequest `
-            -Uri $url `
-            -OutFile $installerPath
+          curl.exe `
+            --fail `
+            --location `
+            --retry 3 `
+            --retry-delay 2 `
+            --connect-timeout 30 `
+            --max-time 300 `
+            --output $installerPath `
+            $url
+      
+          if ($LASTEXITCODE -ne 0) {
+            throw "Mullvad Browser download failed with exit code $LASTEXITCODE."
+          }
       
           if (-not (Test-Path $installerPath)) {
             throw "Mullvad Browser installer was not downloaded."
           }
       
-          Write-Host "Installing Mullvad Browser..."
+          $file = Get-Item $installerPath
+      
+          if ($file.Length -lt 10MB) {
+            throw "Downloaded Mullvad Browser installer is unexpectedly small: $($file.Length) bytes."
+          }
+      
+          Write-Host "Downloaded $($file.Length) bytes."
+      
+          Write-Host "Installing Mullvad Browser silently..."
       
           $process = Start-Process `
             -FilePath $installerPath `
@@ -132,18 +152,22 @@ jobs:
             -Wait `
             -PassThru
       
+          Write-Host "Installer exit code: $($process.ExitCode)"
+      
           if ($process.ExitCode -ne 0) {
             throw "Mullvad Browser installer failed with exit code $($process.ExitCode)."
           }
       
           Remove-Item $installerPath -Force
       
-          # Locate installed browser
+          # Find the installed browser
           $browser = Get-ChildItem `
             -Path @(
+              "$env:LOCALAPPDATA\Mullvad",
               "$env:LOCALAPPDATA\MullvadBrowser",
-              "$env:LOCALAPPDATA\Mullvad\MullvadBrowser",
+              "$env:ProgramFiles\Mullvad",
               "$env:ProgramFiles\MullvadBrowser",
+              "${env:ProgramFiles(x86)}\Mullvad",
               "${env:ProgramFiles(x86)}\MullvadBrowser"
             ) `
             -Filter "mullvadbrowser.exe" `
@@ -158,11 +182,14 @@ jobs:
       
           $version = $browser.VersionInfo.ProductVersion
       
-          Write-Host "Mullvad Browser installed successfully."
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Mullvad Browser installed successfully"
           Write-Host "Version: $version"
           Write-Host "Path:    $($browser.FullName)"
-
-
+          Write-Host "=========================================="
+      
+      
 
 
     
