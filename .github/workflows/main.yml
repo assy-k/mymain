@@ -111,12 +111,11 @@ jobs:
       - name: Install Mullvad Browser
         shell: powershell
         run: |
-          $ErrorActionPreference = "Stop"
-      
-          $url = "https://mullvad.net/en/download/browser/windows-x86_64/latest"
+          $url = "https://mullvad.net/en/download/browser/win64/latest"
           $installerPath = "$env:TEMP\mullvad-browser.exe"
       
           Write-Host "Downloading latest Mullvad Browser..."
+      
           Invoke-WebRequest `
             -Uri $url `
             -OutFile $installerPath
@@ -125,7 +124,7 @@ jobs:
             throw "Mullvad Browser installer was not downloaded."
           }
       
-          Write-Host "Installing Mullvad Browser silently..."
+          Write-Host "Installing Mullvad Browser..."
       
           $process = Start-Process `
             -FilePath $installerPath `
@@ -139,9 +138,14 @@ jobs:
       
           Remove-Item $installerPath -Force
       
-          # Mullvad's standard installation is inside the user's profile.
+          # Locate installed browser
           $browser = Get-ChildItem `
-            -Path "$env:LOCALAPPDATA" `
+            -Path @(
+              "$env:LOCALAPPDATA\MullvadBrowser",
+              "$env:LOCALAPPDATA\Mullvad\MullvadBrowser",
+              "$env:ProgramFiles\MullvadBrowser",
+              "${env:ProgramFiles(x86)}\MullvadBrowser"
+            ) `
             -Filter "mullvadbrowser.exe" `
             -Recurse `
             -File `
@@ -154,13 +158,9 @@ jobs:
       
           $version = $browser.VersionInfo.ProductVersion
       
-          Write-Host ""
-          Write-Host "=========================================="
-          Write-Host "Mullvad Browser installed successfully"
+          Write-Host "Mullvad Browser installed successfully."
           Write-Host "Version: $version"
           Write-Host "Path:    $($browser.FullName)"
-          Write-Host "=========================================="
-
 
 
 
