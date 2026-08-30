@@ -129,7 +129,7 @@ jobs:
             throw "Installer was not downloaded."
           }
       
-          Write-Host "Installing Mullvad Browser system-wide..."
+          Write-Host "Installing Mullvad Browser..."
       
           $p = Start-Process `
             -FilePath $installer `
@@ -145,23 +145,41 @@ jobs:
       
           Remove-Item $installer -Force
       
-          # Mullvad Browser standard installation location
-          $browserPath = "$env:ProgramFiles\Mullvad Browser\mullvadbrowser.exe"
+          Write-Host "Locating Mullvad Browser installation..."
       
-          if (-not (Test-Path $browserPath)) {
-            $browserPath = "${env:ProgramFiles(x86)}\Mullvad Browser\mullvadbrowser.exe"
+          # Look in Windows uninstall registry entries
+          $uninstallPaths = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+          )
+      
+          $install = Get-ItemProperty $uninstallPaths -ErrorAction SilentlyContinue |
+            Where-Object {
+              $_.DisplayName -like "*Mullvad Browser*"
+            } |
+            Select-Object -First 1
+      
+          if (-not $install) {
+            throw "Mullvad Browser was not found in the Windows uninstall registry."
           }
       
+          Write-Host "Installed product: $($install.DisplayName)"
+          Write-Host "Install location:  $($install.InstallLocation)"
+      
+          # Locate executable from the registered installation directory
+          $browserPath = Join-Path $install.InstallLocation "mullvadbrowser.exe"
+      
           if (-not (Test-Path $browserPath)) {
-            throw "Mullvad Browser executable was not found."
+            throw "Mullvad Browser executable was not found at: $browserPath"
           }
       
           $browser = Get-Item $browserPath
       
-          Write-Host "Installed: $($browser.FullName)"
-          Write-Host "Version:   $($browser.VersionInfo.ProductVersion)"
+          Write-Host "Executable: $($browser.FullName)"
+          Write-Host "Version:    $($browser.VersionInfo.ProductVersion)"
       
-          # Find gopher's actual profile
+          # Find gopher's actual Windows profile
           $gopher = Get-LocalUser -Name "gopher" -ErrorAction Stop
           $sid = $gopher.SID.Value
       
@@ -178,6 +196,7 @@ jobs:
       
           New-Item -Path $desktop -ItemType Directory -Force | Out-Null
       
+          # Create shortcut
           $shortcutPath = Join-Path $desktop "Mullvad Browser.lnk"
       
           $shell = New-Object -ComObject WScript.Shell
@@ -190,7 +209,6 @@ jobs:
           $shortcut.Save()
       
           Write-Host "Shortcut created: $shortcutPath"
-
       
 
 
