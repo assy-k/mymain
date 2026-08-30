@@ -129,87 +129,74 @@ jobs:
             $url
       
           if ($LASTEXITCODE -ne 0) {
-            throw "MuMu Player download failed with exit code $LASTEXITCODE."
+            throw "Download failed with exit code $LASTEXITCODE."
           }
       
           if (-not (Test-Path $installer)) {
-            throw "MuMu Player installer was not downloaded."
+            throw "Installer was not downloaded."
           }
       
-          $file = Get-Item $installer
-          Write-Host "Downloaded: $($file.Length) bytes"
-      
-          # Verify Authenticode signature
           $signature = Get-AuthenticodeSignature $installer
       
           Write-Host "Signature: $($signature.Status)"
           Write-Host "Signer:    $($signature.SignerCertificate.Subject)"
       
           if ($signature.Status -ne "Valid") {
-            throw "MuMu Player installer signature is not valid."
+            throw "Installer signature is not valid."
           }
       
-          Write-Host "Installing MuMu Player silently..."
+          Write-Host "Starting MuMu Player installer..."
       
           $process = Start-Process `
             -FilePath $installer `
-            -ArgumentList "/S" `
-            -Wait `
             -PassThru
+      
+          Write-Host "Installer PID: $($process.Id)"
+      
+          # Give the installer up to 5 minutes
+          $timeout = 300
+          $elapsed = 0
+      
+          while (-not $process.HasExited -and $elapsed -lt $timeout) {
+            Start-Sleep -Seconds 10
+            $elapsed += 10
+            Write-Host "Installer still running... $elapsed seconds"
+          }
+      
+          if (-not $process.HasExited) {
+            Write-Host "========== INSTALLER DIAGNOSTICS =========="
+            Get-Process -Id $process.Id -ErrorAction SilentlyContinue |
+              Format-List Id,ProcessName,CPU,StartTime,Responding
+      
+            Write-Host "========== RELATED PROCESSES =========="
+      
+            Get-CimInstance Win32_Process |
+              Where-Object {
+                $_.ParentProcessId -eq $process.Id -or
+                $_.ProcessId -eq $process.Id
+              } |
+              Select-Object ProcessId,ParentProcessId,Name,CommandLine |
+              Format-List
+      
+            Write-Host "========================================="
+      
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+      
+            throw "MuMu installer did not finish within 300 seconds."
+          }
       
           Write-Host "Installer exit code: $($process.ExitCode)"
       
           if ($process.ExitCode -ne 0) {
-            throw "MuMu Player installer failed with exit code $($process.ExitCode)."
+            throw "MuMu installer failed with exit code $($process.ExitCode)."
           }
       
           Remove-Item $installer -Force
       
-          Write-Host "MuMu Player installation completed."
-      
-          # Check common installation locations
-          $installPaths = @(
-            "$env:ProgramFiles\MuMu",
-            "$env:ProgramFiles\MuMuPlayer",
-            "${env:ProgramFiles(x86)}\MuMu",
-            "${env:ProgramFiles(x86)}\MuMuPlayer",
-            "$env:LOCALAPPDATA\Programs\MuMu",
-            "$env:LOCALAPPDATA\MuMu"
-          )
-      
-          $mumuExe = $null
-      
-          foreach ($path in $installPaths) {
-            if (Test-Path $path) {
-              $found = Get-ChildItem `
-                -Path $path `
-                -Filter "*.exe" `
-                -Recurse `
-                -File `
-                -ErrorAction SilentlyContinue |
-                Where-Object {
-                  $_.Name -match "MuMu|Nemu|player"
-                } |
-                Select-Object -First 1
-      
-              if ($found) {
-                $mumuExe = $found
-                break
-              }
-            }
-          }
-      
-          if ($mumuExe) {
-            Write-Host "MuMu executable: $($mumuExe.FullName)"
-            Write-Host "Version: $($mumuExe.VersionInfo.ProductVersion)"
-          }
-          else {
-            Write-Host "Installation completed, but executable was not found in common locations."
-            Write-Host "The installer returned exit code 0."
-          }
+          Write-Host "MuMu Player installer completed."
 
 
-    
+
 
 
 
