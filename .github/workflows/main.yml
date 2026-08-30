@@ -89,18 +89,6 @@ jobs:
       
           Remove-Item $installerPath -Force
       
-          $brave = Get-ChildItem `
-            -Path @(
-              "$env:LOCALAPPDATA\BraveSoftware",
-              "$env:ProgramFiles\BraveSoftware",
-              "${env:ProgramFiles(x86)}\BraveSoftware"
-            ) `
-            -Filter "brave.exe" `
-            -Recurse `
-            -File `
-            -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-      
           if (-not $brave) {
             throw "Brave was not found after installation."
           }
