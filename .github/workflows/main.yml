@@ -129,12 +129,17 @@ jobs:
             $url
       
           if ($LASTEXITCODE -ne 0) {
-            throw "Download failed with exit code $LASTEXITCODE."
+            throw "MuMu Player download failed with exit code $LASTEXITCODE."
           }
       
           if (-not (Test-Path $installer)) {
-            throw "Installer was not downloaded."
+            throw "MuMu Player installer was not downloaded."
           }
+      
+          $file = Get-Item $installer
+          Write-Host "Downloaded: $($file.Length) bytes"
+      
+          Write-Host "Checking Authenticode signature..."
       
           $signature = Get-AuthenticodeSignature $installer
       
@@ -142,58 +147,43 @@ jobs:
           Write-Host "Signer:    $($signature.SignerCertificate.Subject)"
       
           if ($signature.Status -ne "Valid") {
-            throw "Installer signature is not valid."
+            throw "MuMu Player installer signature is not valid."
           }
       
           Write-Host "Starting MuMu Player installer..."
       
+          # MuMu's downloaded executable is an online/bootstrap installer.
+          # Let it download and install its required components.
           $process = Start-Process `
             -FilePath $installer `
             -PassThru
       
           Write-Host "Installer PID: $($process.Id)"
       
-          # Give the installer up to 5 minutes
-          $timeout = 300
-          $elapsed = 0
+          while (-not $process.HasExited) {
+            Start-Sleep -Seconds 15
       
-          while (-not $process.HasExited -and $elapsed -lt $timeout) {
-            Start-Sleep -Seconds 10
-            $elapsed += 10
-            Write-Host "Installer still running... $elapsed seconds"
+            Write-Host "Installer still running..."
+      
+            # Show the downloader if it exists
+            $downloader = Get-Process "nemu-downloader" `
+              -ErrorAction SilentlyContinue
+      
+            if ($downloader) {
+              Write-Host "MuMu downloader is running (PID $($downloader.Id))."
+            }
           }
-      
-          if (-not $process.HasExited) {
-            Write-Host "========== INSTALLER DIAGNOSTICS =========="
-            Get-Process -Id $process.Id -ErrorAction SilentlyContinue |
-              Format-List Id,ProcessName,CPU,StartTime,Responding
-      
-            Write-Host "========== RELATED PROCESSES =========="
-      
-            Get-CimInstance Win32_Process |
-              Where-Object {
-                $_.ParentProcessId -eq $process.Id -or
-                $_.ProcessId -eq $process.Id
-              } |
-              Select-Object ProcessId,ParentProcessId,Name,CommandLine |
-              Format-List
-      
-            Write-Host "========================================="
-      
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-      
-            throw "MuMu installer did not finish within 300 seconds."
-          }
-      
+
           Write-Host "Installer exit code: $($process.ExitCode)"
       
           if ($process.ExitCode -ne 0) {
-            throw "MuMu installer failed with exit code $($process.ExitCode)."
+            throw "MuMu Player installer failed with exit code $($process.ExitCode)."
           }
       
-          Remove-Item $installer -Force
+          Remove-Item $installer -Force -ErrorAction SilentlyContinue
       
-          Write-Host "MuMu Player installer completed."
+          Write-Host "MuMu Player installation completed."
+
 
 
 
