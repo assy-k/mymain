@@ -108,39 +108,16 @@ jobs:
 
 
 
-      - name: Download MuMu Player
+      - name: Install MuMu Player
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
       
           $installer = "$env:TEMP\mumu-player.exe"
+          $url = "https://api.mumuplayer.com/api/dl/win?channel=gw-win-download"
       
           Write-Host "Downloading MuMu Player..."
-      
-          # Official MuMu Windows download page
-          $page = Invoke-WebRequest `
-            -Uri "https://www.mumuplayer.com/" `
-            -UseBasicParsing
-      
-          # Find the Windows download URL from the current page
-          $downloadLink = $page.Links |
-            Where-Object {
-              $_.href -and (
-                $_.innerText -match "Windows" -or
-                $_.href -match "windows"
-              )
-            } |
-            Select-Object -First 1 -ExpandProperty href
-      
-          if (-not $downloadLink) {
-            throw "Could not find the current MuMu Windows download URL."
-          }
-      
-          if ($downloadLink -notmatch "^https?://") {
-            $downloadLink = "https://www.mumuplayer.com$downloadLink"
-          }
-      
-          Write-Host "Download URL: $downloadLink"
+          Write-Host "URL: $url"
       
           curl.exe `
             -L `
@@ -150,36 +127,40 @@ jobs:
             --connect-timeout 30 `
             --max-time 600 `
             -o $installer `
-            $downloadLink
+            $url
       
           if ($LASTEXITCODE -ne 0) {
-            throw "MuMu download failed with exit code $LASTEXITCODE."
+            throw "MuMu Player download failed with exit code $LASTEXITCODE."
           }
       
           if (-not (Test-Path $installer)) {
-            throw "MuMu installer was not downloaded."
+            throw "MuMu Player installer was not downloaded."
           }
       
           $file = Get-Item $installer
       
-          Write-Host "Downloaded: $($file.FullName)"
-          Write-Host "Size:       $($file.Length) bytes"
+          Write-Host "Downloaded: $($file.Length) bytes"
       
-          # Show Authenticode information
+          # Verify Authenticode signature
           $signature = Get-AuthenticodeSignature $installer
       
-          Write-Host "Signature:  $($signature.Status)"
-          Write-Host "Signer:     $($signature.SignerCertificate.Subject)"
+          Write-Host "Signature: $($signature.Status)"
+          Write-Host "Signer:    $($signature.SignerCertificate.Subject)"
       
           if ($signature.Status -ne "Valid") {
-            throw "MuMu installer signature is not valid."
+            throw "MuMu Player installer signature is not valid."
           }
       
-          Write-Host ""
-          Write-Host "Installer downloaded successfully."
-          Write-Host "Installer path: $installer"
-          Write-Host ""
-          Write-Host "Next step: inspect the installer for its supported silent-install options."
+          Write-Host "Starting MuMu Player installer..."
+      
+          Start-Process `
+            -FilePath $installer `
+            -Wait
+      
+          Write-Host "MuMu Player installer finished."
+      
+          Remove-Item $installer -Force
+
     
 
 
