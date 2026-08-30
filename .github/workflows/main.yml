@@ -126,7 +126,7 @@ jobs:
           }
       
           if (-not (Test-Path $installer)) {
-            throw "Mullvad Browser installer was not downloaded."
+            throw "Installer was not downloaded."
           }
       
           Write-Host "Installing Mullvad Browser system-wide..."
@@ -145,23 +145,23 @@ jobs:
       
           Remove-Item $installer -Force
       
-          # Find system-wide Mullvad Browser without scanning all of Program Files
-          $browser = Get-ChildItem `
-            -Path "$env:ProgramFiles\Mullvad*", "${env:ProgramFiles(x86)}\Mullvad*" `
-            -Filter "mullvadbrowser.exe" `
-            -Recurse `
-            -File `
-            -ErrorAction SilentlyContinue |
-            Select-Object -First 1
+          # Mullvad Browser standard installation location
+          $browserPath = "$env:ProgramFiles\Mullvad Browser\mullvadbrowser.exe"
       
-          if (-not $browser) {
-            throw "Mullvad Browser was not found in the system-wide installation directories."
+          if (-not (Test-Path $browserPath)) {
+            $browserPath = "${env:ProgramFiles(x86)}\Mullvad Browser\mullvadbrowser.exe"
           }
+      
+          if (-not (Test-Path $browserPath)) {
+            throw "Mullvad Browser executable was not found."
+          }
+      
+          $browser = Get-Item $browserPath
       
           Write-Host "Installed: $($browser.FullName)"
           Write-Host "Version:   $($browser.VersionInfo.ProductVersion)"
       
-          # Find gopher's actual Windows profile
+          # Find gopher's actual profile
           $gopher = Get-LocalUser -Name "gopher" -ErrorAction Stop
           $sid = $gopher.SID.Value
       
@@ -178,7 +178,6 @@ jobs:
       
           New-Item -Path $desktop -ItemType Directory -Force | Out-Null
       
-          # Create shortcut on gopher's Desktop
           $shortcutPath = Join-Path $desktop "Mullvad Browser.lnk"
       
           $shell = New-Object -ComObject WScript.Shell
@@ -191,6 +190,7 @@ jobs:
           $shortcut.Save()
       
           Write-Host "Shortcut created: $shortcutPath"
+
       
 
 
