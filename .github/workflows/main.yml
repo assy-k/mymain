@@ -1,4 +1,4 @@
-name: Back To Windows
+name: main
 
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
           # Priority on foreground applications
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\PriorityControl' -Name "Win32PrioritySeparation" -Value 26 -Force
   
-      - name: Configure Core RDP Settings
+      - name: Configure Core Security Settings
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
@@ -37,17 +37,17 @@ jobs:
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Custom Password
+      - name: Create User with Custom Password
         run: |
-          $password = "helloW0rld*"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          $pw = "helloW0rld*"
+          $securePass = ConvertTo-SecureString $pw -AsPlainText -Force
           
           New-LocalUser -Name "gopher" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "gopher"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "gopher"
           
           if (-not (Get-LocalUser -Name "gopher")) {
-              Write-Error "Erro ao criar o usuário do RDP"
+              Write-Error "Error creating user"
               exit 1
           }
 
@@ -119,7 +119,7 @@ jobs:
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
       
-      - name: Verify RDP Accessibility
+      - name: Verify Connection
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           
@@ -134,15 +134,14 @@ jobs:
       - name: Maintain Connection
         run: |
           Write-Host "`n=================================================="
-          Write-Host "CONECTE VIA SEU CLIENTE RDP UTILIZANDO O TAILSCALE:"
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: gopher"
-          Write-Host "Password: helloW0rld*"
+          Write-Host "Connection details:"
+          Write-Host "address: $env:TAILSCALE_IP"
+          Write-Host "user: gopher"
+          Write-Host "pw: helloW0rld*"
           Write-Host "==================================================`n"
           
-          # Mantém a sessão ativa de forma estável por até 5.8 horas (350 minutos)
           $endTime = (Get-Date).AddMinutes(350)
           do {
-              Write-Host "[$(Get-Date)] Sessão RDP online e operando..."
+              Write-Host "[$(Get-Date)] Connection online and operational..."
               Start-Sleep -Seconds 120
           } while ((Get-Date) -lt $endTime)
