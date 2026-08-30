@@ -51,6 +51,8 @@ jobs:
               exit 1
           }
 
+
+
       - name: Install Brave Browser
         shell: powershell
         run: |
@@ -105,89 +107,6 @@ jobs:
       
           Write-Host "Brave installed: $($brave.VersionInfo.ProductVersion)"
           Write-Host "Path: $($brave.FullName)"
-
-
-
-      - name: Install MuMu Player
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-      
-          $installer = "$env:TEMP\mumu-player.exe"
-          $url = "https://api.mumuplayer.com/api/dl/win?channel=gw-win-download"
-      
-          Write-Host "Downloading MuMu Player..."
-      
-          curl.exe `
-            -L `
-            --fail `
-            --retry 3 `
-            --retry-delay 2 `
-            --connect-timeout 30 `
-            --max-time 600 `
-            -o $installer `
-            $url
-      
-          if ($LASTEXITCODE -ne 0) {
-            throw "MuMu Player download failed with exit code $LASTEXITCODE."
-          }
-      
-          if (-not (Test-Path $installer)) {
-            throw "MuMu Player installer was not downloaded."
-          }
-      
-          $file = Get-Item $installer
-          Write-Host "Downloaded: $($file.Length) bytes"
-      
-          Write-Host "Checking Authenticode signature..."
-      
-          $signature = Get-AuthenticodeSignature $installer
-      
-          Write-Host "Signature: $($signature.Status)"
-          Write-Host "Signer:    $($signature.SignerCertificate.Subject)"
-      
-          if ($signature.Status -ne "Valid") {
-            throw "MuMu Player installer signature is not valid."
-          }
-      
-          Write-Host "Starting MuMu Player installer..."
-      
-          # MuMu's downloaded executable is an online/bootstrap installer.
-          # Let it download and install its required components.
-          $process = Start-Process `
-            -FilePath $installer `
-            -PassThru
-      
-          Write-Host "Installer PID: $($process.Id)"
-      
-          while (-not $process.HasExited) {
-            Start-Sleep -Seconds 15
-      
-            Write-Host "Installer still running..."
-      
-            # Show the downloader if it exists
-            $downloader = Get-Process "nemu-downloader" `
-              -ErrorAction SilentlyContinue
-      
-            if ($downloader) {
-              Write-Host "MuMu downloader is running (PID $($downloader.Id))."
-            }
-          }
-
-          Write-Host "Installer exit code: $($process.ExitCode)"
-      
-          if ($process.ExitCode -ne 0) {
-            throw "MuMu Player installer failed with exit code $($process.ExitCode)."
-          }
-      
-          Remove-Item $installer -Force -ErrorAction SilentlyContinue
-      
-          Write-Host "MuMu Player installation completed."
-
-
-
-
-
 
 
 
