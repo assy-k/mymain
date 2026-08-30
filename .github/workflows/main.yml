@@ -122,7 +122,7 @@ jobs:
             throw "Download failed."
           }
       
-          $password = ConvertTo-SecureString "helloW0rld*" -AsPlainText -Force
+          $password = ConvertTo-SecureString 'helloW0rld*' -AsPlainText -Force
           $credential = New-Object PSCredential("gopher", $password)
       
           Write-Host "Installing Mullvad Browser for gopher..."
