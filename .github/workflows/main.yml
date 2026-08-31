@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
+  workwork:
     runs-on: windows-latest 
     timeout-minutes: 360 
 
@@ -33,8 +33,8 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
 
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall delete rule name="workwork"
+          netsh advfirewall firewall add rule name="workwork" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
       - name: Create User with Custom Password
@@ -50,7 +50,6 @@ jobs:
               Write-Error "Error creating user"
               exit 1
           }
-
 
 
       - name: Install Brave Browser
